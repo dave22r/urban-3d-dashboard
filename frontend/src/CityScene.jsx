@@ -3,7 +3,7 @@ import { OrbitControls } from "@react-three/drei";
 import { useState } from "react";
 import BuildingMesh from "./BuildingMesh";
 
-export default function CityScene({ buildings }) {
+export default function CityScene({ buildings, filtered }) {
   const [selected, setSelected] = useState(null);
 
   return (
@@ -16,7 +16,9 @@ export default function CityScene({ buildings }) {
           <BuildingMesh
             key={b.id}
             building={b}
-            selected={selected?.id === b.id}
+            selected={
+              (selected && selected.id === b.id) || (filtered?.includes(b.id))
+            }
             onSelect={(build) => setSelected(build)}
           />
         ))}
@@ -24,23 +26,26 @@ export default function CityScene({ buildings }) {
         <OrbitControls />
       </Canvas>
 
+      {/* Popup for selected building */}
       {selected && (
-        <div style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          padding: "12px 16px",
-          background: "white",
-          borderRadius: 6,
-          boxShadow: "0 3px 10px rgba(0,0,0,0.2)",
-          width: "220px",
-          fontFamily: "sans-serif"
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: 60,
+            left: 20,
+            padding: "12px 16px",
+            background: "white",
+            borderRadius: 6,
+            boxShadow: "0 3px 10px rgba(0,0,0,0.2)",
+            width: "240px",
+            fontFamily: "sans-serif",
+          }}
+        >
           <h3 style={{ margin: "0 0 10px" }}>Building Info</h3>
           <p><strong>ID:</strong> {selected.id}</p>
           <p><strong>Struct ID:</strong> {selected.struct_id}</p>
-          <p><strong>Height:</strong> {selected.height.toFixed(2)} m</p>
           <p><strong>Stage:</strong> {selected.stage}</p>
+          <p><strong>Height:</strong> {selected.height.toFixed(2)} m</p>
         </div>
       )}
     </>

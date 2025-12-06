@@ -22,11 +22,11 @@ export default function BuildingMesh({ building, onSelect, selected }) {
       geometry={geometry}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(building);   // send clicked building back
+        onSelect(building);
       }}
     >
       <meshStandardMaterial
-        color={selected ? "yellow" : "#7da0d0"}  // highlight if selected
+        color={selected ? "yellow" : "#7da0d0"}
       />
     </mesh>
   );

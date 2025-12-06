@@ -2,7 +2,7 @@
 backend/data/raw/*.geojson
 backend/data/raw/*.json
 *.geojson
-
+backend/.env
 # Ignore Mac junk files
 .DS_Store
 backend/**/.DS_Store
