@@ -87,6 +87,51 @@ def parse_query_fallback(prompt):
     print("🔧 Using fallback regex parser")
     query = prompt.lower()
     
+    # Check for stage-based queries
+    if any(word in query for word in ["constructed", "construction"]):
+        if "under construction" in query:
+            result = {
+                "attribute": "stage",
+                "operator": "=",
+                "value": "Under Construction"
+            }
+        else:
+            result = {
+                "attribute": "stage",
+                "operator": "=",
+                "value": "Constructed"
+            }
+        print(f"🎯 Fallback parsed (stage): {result}")
+        return json.dumps(result)
+    
+    if "approved" in query:
+        result = {
+            "attribute": "stage",
+            "operator": "=",
+            "value": "Approved"
+        }
+        print(f"🎯 Fallback parsed (stage): {result}")
+        return json.dumps(result)
+    
+    # Check for superlative queries
+    if any(word in query for word in ["tallest", "highest", "maximum", "max"]):
+        result = {
+            "attribute": "height",
+            "operator": "max",
+            "value": 0
+        }
+        print(f"🎯 Fallback parsed (superlative): {result}")
+        return json.dumps(result)
+    
+    if any(word in query for word in ["shortest", "lowest", "minimum", "min", "smallest"]):
+        result = {
+            "attribute": "height",
+            "operator": "min",
+            "value": 0
+        }
+        print(f"🎯 Fallback parsed (superlative): {result}")
+        return json.dumps(result)
+    
     # Extract numeric values
     numbers = re.findall(r'\d+\.?\d*', query)
     if not numbers:
@@ -144,6 +189,58 @@ def extract_json_block(text):
         return None
 
 
+def apply_single_filter(building, attribute, operator, value):
+    """
+    Apply a single filter condition to a building.
+    Returns True if building matches the condition.
+    """
+    if attribute == "height":
+        h = building["height"]
+        
+        if operator == ">":
+            return h > value
+        elif operator == "<":
+            return h < value
+        elif operator == ">=":
+            return h >= value
+        elif operator == "<=":
+            return h <= value
+        elif operator in ["==", "="]:
+            return abs(h - value) < 1.0
+        
+    elif attribute == "stage":
+        stage = building.get("stage", "").lower()
+        value_lower = str(value).lower()
+        
+        if operator == "=":
+            return stage == value_lower
+        elif operator == "contains":
+            return value_lower in stage
+    
+    return False
+
+
+def handle_compound_query(filters):
+    """
+    Handle queries with multiple filter conditions (AND logic).
+    """
+    print(f"🔗 Processing compound query with {len(filters)} conditions")
+    
+    matches = []
+    for b in buildings:
+        # Building must match ALL filters
+        if all(apply_single_filter(b, f.get("attribute"), f.get("operator"), f.get("value")) for f in filters):
+            matches.append(b["id"])
+    
+    print(f"✅ Found {len(matches)} buildings matching all conditions")
+    
+    return jsonify({
+        "ids": matches,
+        "count": len(matches),
+        "filters": filters
+    })
+
+
 # -------------------------------------------------------
 # API Endpoints
 # -------------------------------------------------------
@@ -167,22 +264,35 @@ def api_query():
     # Create prompt for LLM
     prompt = f"""Convert this natural language query into a JSON filter object.
 
-Return ONLY a JSON object in this exact format:
+Return ONLY a JSON object. For single conditions use this format:
 {{"attribute": "height", "operator": ">", "value": 50}}
 
-Supported attributes: "height" (building height in meters)
-Supported operators: ">", "<", ">=", "<=", "="
-Value must be a number.
+For multiple conditions (AND logic), use this format:
+{{"filters": [{{"attribute": "height", "operator": ">", "value": 100}}, {{"attribute": "stage", "operator": "=", "value": "Constructed"}}]}}
+
+Supported attributes:
+- "height" (number in meters)
+- "stage" (text: "Constructed", "Approved", "Under Construction", etc.)
+
+Supported operators:
+- For numbers: ">", "<", ">=", "<=", "=", "max", "min"
+- For text: "=", "contains"
 
 Examples:
 Query: "show buildings over 50 meters"
 JSON: {{"attribute": "height", "operator": ">", "value": 50}}
 
-Query: "buildings under 20 meters"
-JSON: {{"attribute": "height", "operator": "<", "value": 20}}
+Query: "show me the tallest building"
+JSON: {{"attribute": "height", "operator": "max", "value": 0}}
 
-Query: "buildings taller than 100"
-JSON: {{"attribute": "height", "operator": ">", "value": 100}}
+Query: "show all constructed buildings"
+JSON: {{"attribute": "stage", "operator": "=", "value": "Constructed"}}
+
+Query: "constructed buildings taller than 100 meters"
+JSON: {{"filters": [{{"attribute": "stage", "operator": "=", "value": "Constructed"}}, {{"attribute": "height", "operator": ">", "value": 100}}]}}
+
+Query: "approved buildings under 50m"
+JSON: {{"filters": [{{"attribute": "stage", "operator": "=", "value": "Approved"}}, {{"attribute": "height", "operator": "<", "value": 50}}]}}
 
 Now convert this query:
 Query: "{user_query}"
@@ -206,41 +316,50 @@ JSON:"""
             "count": 0
         })
 
-    # Extract filter parameters
+    # Check if it's a compound query (multiple filters)
+    if "filters" in filt:
+        return handle_compound_query(filt["filters"])
+
+    # Extract filter parameters for single query
     attribute = filt.get("attribute", "height")
     operator = filt.get("operator", ">")
     value = filt.get("value", 0)
 
-    # Clean and validate value
-    try:
-        if isinstance(value, str):
-            # Remove common suffixes
-            value = value.replace("meters", "").replace("metre", "").replace("m", "").strip()
-        value = float(value)
-    except (ValueError, TypeError) as e:
-        print(f"❌ Invalid numeric value: {value} ({e})")
-        return jsonify({
-            "ids": [], 
-            "error": f"Invalid numeric value: {value}",
-            "count": 0
-        })
-
-    # Filter buildings based on criteria
-    matches = []
-    for b in buildings:
+    # Handle superlative queries (tallest, shortest, etc.)
+    if operator in ["max", "tallest", "highest", "maximum"]:
+        # Find the tallest building(s)
         if attribute == "height":
-            h = b["height"]
-            
-            if operator == ">" and h > value:
-                matches.append(b["id"])
-            elif operator == "<" and h < value:
-                matches.append(b["id"])
-            elif operator == ">=" and h >= value:
-                matches.append(b["id"])
-            elif operator == "<=" and h <= value:
-                matches.append(b["id"])
-            elif operator in ["==", "="] and abs(h - value) < 1.0:
-                matches.append(b["id"])
+            max_height = max(b["height"] for b in buildings)
+            matches = [b["id"] for b in buildings if b["height"] == max_height]
+            print(f"✅ Found tallest building(s) with height {max_height}m: {matches}")
+            return jsonify({
+                "ids": matches,
+                "count": len(matches),
+                "filter": {
+                    "attribute": attribute,
+                    "operator": "max",
+                    "value": max_height
+                }
+            })
+    
+    if operator in ["min", "shortest", "lowest", "minimum"]:
+        # Find the shortest building(s)
+        if attribute == "height":
+            min_height = min(b["height"] for b in buildings)
+            matches = [b["id"] for b in buildings if b["height"] == min_height]
+            print(f"✅ Found shortest building(s) with height {min_height}m: {matches}")
+            return jsonify({
+                "ids": matches,
+                "count": len(matches),
+                "filter": {
+                    "attribute": attribute,
+                    "operator": "min",
+                    "value": min_height
+                }
+            })
+
+    # Apply single filter
+    matches = [b["id"] for b in buildings if apply_single_filter(b, attribute, operator, value)]
 
     print(f"✅ Found {len(matches)} matching buildings")
     
