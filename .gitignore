@@ -1,0 +1,12 @@
+# Ignore raw data files
+backend/data/raw/*.geojson
+backend/data/raw/*.json
+*.geojson
+
+# Ignore Mac junk files
+.DS_Store
+backend/**/.DS_Store
+
+backend/data/raw/*.geojson
+backend/data/raw/*.json
+.DS_Store
