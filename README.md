@@ -33,7 +33,7 @@ The system integrates:
 
 ### 3D Visualization
 - Buildings extruded from real OSM footprints
-- Heights sourced from OSM or inferred when missing
+- Heights sourced from OSM data.
 - Ground plane, camera controls, smooth interactions
 - Clicking a building highlights it and opens a detail panel
 
