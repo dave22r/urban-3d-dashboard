@@ -228,6 +228,7 @@ Shows backend status and LLM availability.
 
 
 Below is the Preprocessing pipeline diagram for reference.
+**Note: UML Diagram is also in the root repository by the name "uml diagram mmd.png"**
 
 ``` mermaid
 flowchart TD
