@@ -13,9 +13,9 @@ interface QueryInputProps {
 const EXAMPLE_QUERIES = [
   "show buildings over 100 meters",
   "find the tallest building",
-  "buildings under construction",
-  "constructed buildings taller than 50m",
-  "show approved buildings",
+  "buildings in the Beltline community",
+  "buildings in the DC zoning under 10 million dollars",
+  
 ];
 
 export function QueryInput({ onQuery, onClear, loading, hasFilters }: QueryInputProps) {
