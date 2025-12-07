@@ -16,6 +16,9 @@ https://urban-3d-dashboard.vercel.app
 
 ---
 
+## Video Walkthrough
+https://youtu.be/zP9dyFzMBjM?si=9TB9G9CZ7nPE-Jqn
+
 ## Overview
 
 This project is a complete web-based 3D city dashboard for Calgary, capable of:
