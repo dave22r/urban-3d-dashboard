@@ -1,4 +1,5 @@
 ``` mermaid
+
 flowchart LR
     subgraph Browser["User Browser"]
         UI[React + Three.js Frontend\n(Vercel Deployment)]
