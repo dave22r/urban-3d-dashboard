@@ -254,6 +254,14 @@ flowchart TD
 Lastly, this is the LLM Query Processing flowchart
 
 ``` mermaid
+Unable to render rich display
+
+Parse error on line 26:
+... all normal filters (AND logic)] App
+-----------------------^
+Expecting 'SQE', 'DOUBLECIRCLEEND', 'PE', '-)', 'STADIUMEND', 'SUBROUTINEEND', 'PIPE', 'CYLINDEREND', 'DIAMOND_STOP', 'TAGEND', 'TRAPEND', 'INVTRAPEND', 'UNICODE_TEXT', 'TEXT', 'TAGSTART', got 'PS'
+
+For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
 flowchart TD
     Start([User Query Received]) --> CheckEmpty{Query empty?}
     CheckEmpty -->|Yes| ReturnEmpty[Return empty result]
