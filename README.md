@@ -1,186 +1,59 @@
+UML Diagram
+
 ``` mermaid
 
-classDiagram
-    %% Backend Classes
-    class FlaskApp {
-        -buildings: List~Building~
-        -GROQ_API_KEY: str
-        -NUMERIC_ATTRS: Set
-        -STRING_ATTRS: Set
-        +api_query() JSON
-        +api_buildings() JSON
-        +api_health() JSON
-    }
+flowchart TD
+    Start([User Query Received]) --> CheckEmpty{Query empty}
+    CheckEmpty -->|Yes| ReturnEmpty[Return empty result]
+    CheckEmpty -->|No| CreatePrompt[Create LLM prompt]
 
-    class DataLoader {
-        -DATA_PATH: str
-        +load_buildings() List~Building~
-    }
+    CreatePrompt --> CheckAPIKey{Groq API key exists}
+    CheckAPIKey -->|No| Fallback[Use fallback parser]
+    CheckAPIKey -->|Yes| CallGroq[Call Groq API]
 
-    class LLMService {
-        -GROQ_API_KEY: str
-        +query_llm(prompt: str) str
-        +parse_query_fallback(prompt: str) str
-        -SYSTEM_PROMPT: str
-    }
+    CallGroq --> APIResponse{API success}
+    APIResponse -->|Error| Fallback
+    APIResponse -->|Success| ExtractResponse[Extract JSON text]
 
-    class QueryProcessor {
-        +extract_json_block(text: str) dict
-        +apply_single_filter(building, attr, op, val) bool
-        +apply_numeric(building, attr, op, val) bool
-        +apply_string(building, attr, op, val) bool
-        +handle_compound_query(filters) JSON
-        +handle_superlative(attr, op) JSON
-        +coerce_number(value) float
-    }
+    Fallback --> RegexParse[Run fallback regex parser]
+    RegexParse --> ParseJSON
 
-    class Building {
-        +id: int
-        +osm_id: str
-        +footprint: List~List~float~~
-        +height: float
-        +stage: str
-        +centroid_lon: float
-        +centroid_lat: float
-        +roll_number: str
-        +address: str
-        +assessed_value: float
-        +assessment_class: str
-        +community: str
-        +land_use_designation: str
-        +property_type: str
-        +land_size_sm: float
-        +land_size_ac: float
-        +sub_property_use: str
-    }
+    ExtractResponse --> ParseJSON[Extract JSON block]
 
-    %% Frontend Classes
-    class Index {
-        +render() JSX.Element
-    }
+    ParseJSON --> ValidJSON{JSON is valid}
+    ValidJSON -->|No| Error[Return parsing error]
 
-    class useBuildings {
-        -buildings: Building[]
-        -filteredIds: number[]
-        -selectedBuilding: Building
-        -loading: boolean
-        -queryLoading: boolean
-        -error: string
-        -lastQuery: QueryResult
-        -health: HealthStatus
-        -stats: Stats
-        +runQuery(query: string) Promise
-        +clearFilters() void
-        +setSelectedBuilding(building) void
-    }
+    ValidJSON -->|Yes| CheckType{Contains filters}
 
-    class CityScene {
-        -buildings: Building[]
-        -filteredIds: number[]
-        -selectedId: number
-        -onSelectBuilding: Function
-        +render() JSX.Element
-    }
+    CheckType -->|Yes| CompoundQuery
+    CheckType -->|No| SingleQuery
 
-    class BuildingMesh {
-        -building: Building
-        -isSelected: boolean
-        -isFiltered: boolean
-        -hovered: boolean
-        -meshRef: THREE.Mesh
-        -geometry: THREE.ExtrudeGeometry
-        +handleClick(event) void
-        +getColor() string
-        +render() JSX.Element
-    }
+    %% Compound Query Section
+    CompoundQuery --> SplitFilters[Split normal and superlative filters]
+    SplitFilters --> ApplyNormal[Apply all normal filters using AND]
+    ApplyNormal --> SuperCheck{Superlative filters exist}
+    SuperCheck -->|No| ReturnNormal[Return normal filtered results]
+    SuperCheck -->|Yes| ApplySuper[Apply superlative filters]
+    ApplySuper --> ReturnCompound[Return compound query results]
 
-    class QueryInput {
-        -query: string
-        -loading: boolean
-        -hasFilters: boolean
-        -EXAMPLE_QUERIES: string[]
-        +handleSubmit() void
-        +handleKeyDown(event) void
-        +handleExampleClick(example) void
-        +handleClear() void
-        +render() JSX.Element
-    }
+    %% Single Query Section
+    SingleQuery --> OpCheck{Operator is max or min}
+    OpCheck -->|Yes| SuperSingle
+    OpCheck -->|No| RegularSingle
 
-    class Sidebar {
-        -stats: Stats
-        -lastQuery: QueryResult
-        -selectedBuilding: Building
-        -filteredIds: number[]
-        +render() JSX.Element
-    }
+    SuperSingle --> Extreme[Compute extreme value]
+    Extreme --> ReturnSuper[Return superlative result]
 
-    class StatsPanel {
-        -stats: Stats
-        -lastQuery: QueryResult
-        +render() JSX.Element
-    }
+    RegularSingle --> FilterBuildings[Apply numeric or text filtering]
+    FilterBuildings --> ReturnSingle[Return single filter result]
 
-    class BuildingDetails {
-        -building: Building
-        +render() JSX.Element
-    }
-
-    class Header {
-        -health: HealthStatus
-        -buildingCount: number
-        +render() JSX.Element
-    }
-
-    %% Type Definitions
-    class BuildingInterface {
-        <<interface>>
-        +id: number
-        +osm_id?: string
-        +footprint: number[][]
-        +height: number
-        +stage: string
-        +assessed_value?: number
-        +land_use_designation?: string
-        +community?: string
-        +address?: string
-    }
-
-    class QueryResult {
-        <<interface>>
-        +ids: number[]
-        +count: number
-        +error?: string
-        +filter?: any
-        +filters?: any[]
-    }
-
-    class HealthStatus {
-        <<interface>>
-        +status: string
-        +buildings_loaded: number
-        +llm_available: boolean
-        +llm_provider: string
-    }
-
-    class Stats {
-        <<interface>>
-        +total: number
-        +filtered: number
-        +avgHeight: number
-        +maxHeight: number
-        +minHeight: number
-    }
-
-    %% Relationships
-    FlaskApp --> DataLoader
-    FlaskApp --> LLMService
-    FlaskApp --> QueryProcessor
-    DataLoader --> Building
-    useBuildings --> BuildingInterface
-    CityScene --> BuildingMesh
-    Sidebar --> QueryInput
-    Sidebar --> StatsPanel
-    Sidebar --> BuildingDetails
+    %% Endpoints
+    ReturnEmpty --> End
+    ReturnNormal --> End
+    ReturnCompound --> End
+    ReturnSuper --> End
+    ReturnSingle --> End
+    Error --> End
 ```
 Below is the Preprocessing pipeline diagram (not necessary)
 
