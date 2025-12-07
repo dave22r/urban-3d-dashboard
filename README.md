@@ -224,13 +224,10 @@ Shows backend status and LLM availability.
 
 ---
 
-## Submission
+## Appendix
 
 
-
-
-Appendix:
-Below is the Preprocessing pipeline diagram (not necessary)
+Below is the Preprocessing pipeline diagram for reference.
 
 ``` mermaid
 flowchart TD
