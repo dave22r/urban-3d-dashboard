@@ -1,3 +1,4 @@
+``` mermaid
 classDiagram
     %% Backend Classes
     class FlaskApp {
@@ -179,3 +180,4 @@ classDiagram
     Sidebar --> QueryInput
     Sidebar --> StatsPanel
     Sidebar --> BuildingDetails
+```
