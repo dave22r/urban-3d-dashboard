@@ -7,7 +7,9 @@ from flask_cors import CORS
 from data_loader import load_buildings
 from dotenv import load_dotenv
 
-# Load environment variables
+# -------------------------------------
+# ENV + APP SETUP
+# -------------------------------------
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
@@ -17,13 +19,23 @@ CORS(app)
 # Load buildings once at startup
 buildings = load_buildings()
 
+# Which attributes are numeric / string
+NUMERIC_ATTRS = {"height", "assessed_value", "land_size_sm"}
+STRING_ATTRS = {
+    "stage",
+    "land_use_designation",
+    "community",
+    "property_type",
+    "address",
+}
 
-# -------------------------------------------------------
-# 🔥 LLM Integration (Groq)
-# -------------------------------------------------------
-def query_llm(prompt):
+
+# -------------------------------------
+# LLM INTEGRATION (GROQ)
+# -------------------------------------
+def query_llm(prompt: str) -> str:
     if not GROQ_API_KEY:
-        print("⚠️ No GROQ_API_KEY found — using fallback parser")
+        print("⚠️ No GROQ_API_KEY found – using fallback parser")
         return parse_query_fallback(prompt)
 
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -32,61 +44,102 @@ def query_llm(prompt):
         "Content-Type": "application/json",
     }
 
+    # -------------------------------
+    # UPDATED SYSTEM PROMPT (IMPORTANT)
+    # -------------------------------
+    SYSTEM_PROMPT = (
+        "You ONLY output JSON. No explanations. No markdown.\n"
+        "Your job is to convert natural language queries into filter JSON.\n\n"
+
+        "SUPPORTED ATTRIBUTES:\n"
+        "- \"height\" (meters)\n"
+        "- \"assessed_value\" (CAD)\n"
+        "- \"land_size_sm\" (square metres)\n"
+        "- \"land_use_designation\" (e.g., R-CG, C-COR, etc.)\n"
+        "- \"community\" (neighbourhood name)\n"
+        "- \"property_type\" (e.g., LI, LO, etc.)\n"
+        "- \"address\" (string)\n"
+        "- \"stage\" (string)\n\n"
+
+        "SUPPORTED OPERATORS:\n"
+        "- numeric: \">\", \"<\", \">=\", \"<=\", \"=\", \"max\", \"min\"\n"
+        "- string: \"=\", \"contains\" (case-insensitive)\n\n"
+
+        "SINGLE FILTER FORMAT:\n"
+        "{\"attribute\": \"height\", \"operator\": \">\", \"value\": 20}\n\n"
+
+        "MULTI-FILTER FORMAT (AND):\n"
+        "{\"filters\": [\n"
+        "  {\"attribute\": \"assessed_value\", \"operator\": \">\", \"value\": 1000000},\n"
+        "  {\"attribute\": \"height\", \"operator\": \">\", \"value\": 30}\n"
+        "]}\n\n"
+
+        "SUPERLATIVES:\n"
+        "\"most expensive property\" -> "
+        "{\"attribute\": \"assessed_value\", \"operator\": \"max\", \"value\": 0}\n"
+        "\"cheapest\" -> "
+        "{\"attribute\": \"assessed_value\", \"operator\": \"min\", \"value\": 0}\n"
+        "\"largest lot\" -> "
+        "{\"attribute\": \"land_size_sm\", \"operator\": \"max\", \"value\": 0}\n"
+        "\"smallest lot\" -> "
+        "{\"attribute\": \"land_size_sm\", \"operator\": \"min\", \"value\": 0}\n\n"
+
+        "ALWAYS output valid JSON only."
+    )
+
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You ONLY output JSON. No text. No explanation.\n"
-                    "Supported attributes: height, stage, assessed_value\n"
-                    "Supported operators: >, <, >=, <=, =, contains, max, min\n"
-                    "Use {\"filters\": [...] } if multiple filters are needed."
-                )
-            },
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.1,
-        "max_tokens": 200,
+        "temperature": 0.15,
+        "max_tokens": 300,
     }
 
     try:
         print("📡 Calling Groq API…")
         r = requests.post(url, headers=headers, json=payload, timeout=30)
-
         if r.status_code != 200:
-            print(f"❌ Groq API error {r.status_code}: {r.text}")
+            print(f"❌ Groq error {r.status_code}: {r.text}")
             return parse_query_fallback(prompt)
 
         result = r.json()["choices"][0]["message"]["content"]
-        print(f"✅ Groq response: {result[:100]}...")
+        print(f"✅ Groq response: {result[:150]}...")
         return result
 
     except Exception as e:
-        print(f"❌ Groq API error: {e}")
+        print(f"❌ Groq API exception: {e}")
         return parse_query_fallback(prompt)
 
 
-# -------------------------------------------------------
-# 🔧 FALLBACK PARSER
-# -------------------------------------------------------
-def parse_query_fallback(text):
-    text = text.lower()
+# -------------------------------------
+# FALLBACK QUERY PARSER
+# -------------------------------------
+def parse_query_fallback(prompt: str) -> str:
     print("🔧 Using fallback parser…")
+    text = prompt.lower()
 
-    if "constructed" in text:
-        return json.dumps({"attribute": "stage", "operator": "=", "value": "Constructed"})
+    # superlatives
+    if "most expensive" in text or "highest value" in text:
+        return json.dumps({"attribute": "assessed_value", "operator": "max", "value": 0})
 
-    if "approved" in text:
-        return json.dumps({"attribute": "stage", "operator": "=", "value": "Approved"})
+    if "cheapest" in text or "least expensive" in text:
+        return json.dumps({"attribute": "assessed_value", "operator": "min", "value": 0})
 
-    # numeric extraction
+    if "largest lot" in text or "biggest lot" in text:
+        return json.dumps({"attribute": "land_size_sm", "operator": "max", "value": 0})
+
+    if "smallest lot" in text:
+        return json.dumps({"attribute": "land_size_sm", "operator": "min", "value": 0})
+
+    # numeric threshold → default to height
     nums = re.findall(r"\d+\.?\d*", text)
     num = float(nums[0]) if nums else 0
 
-    if any(k in text for k in ["over", "greater", "above"]):
+    if any(x in text for x in ["over", "above", "greater", "more than"]):
         op = ">"
-    elif any(k in text for k in ["under", "below", "less"]):
+    elif any(x in text for x in ["under", "below", "less than"]):
         op = "<"
     else:
         op = ">"
@@ -94,55 +147,49 @@ def parse_query_fallback(text):
     return json.dumps({"attribute": "height", "operator": op, "value": num})
 
 
-# -------------------------------------------------------
-# 🧠 JSON Extractor — robust
-# -------------------------------------------------------
-def extract_json_block(text):
-    text = text.strip()
+# -------------------------------------
+# JSON BLOCK EXTRACTION
+# -------------------------------------
+def extract_json_block(text: str):
+    if not isinstance(text, str):
+        return None
 
-    # 1) Try direct parse
+    text = text.strip()
     try:
         return json.loads(text)
     except:
         pass
 
-    # Remove markdown
     text = re.sub(r"```json", "", text)
     text = re.sub(r"```", "", text)
 
-    # 2) Extract largest { ... }
-    brace_stack, start = [], None
-
+    stack = []
+    start = None
     for i, ch in enumerate(text):
         if ch == "{":
             if start is None:
                 start = i
-            brace_stack.append("{")
+            stack.append("{")
         elif ch == "}":
-            if brace_stack:
-                brace_stack.pop()
-                if not brace_stack:
-                    block = text[start:i+1]
+            if stack:
+                stack.pop()
+                if not stack:
+                    candidate = text[start:i+1]
                     try:
-                        return json.loads(block)
+                        return json.loads(candidate)
                     except:
-                        pass
+                        start = None
+                        continue
 
-    # 3) Extract array if present
-    try:
-        s = text.index("[")
-        e = text.rindex("]") + 1
-        return json.loads(text[s:e])
-    except:
-        return None
+    return None
 
 
-# -------------------------------------------------------
+# -------------------------------------
 # FILTER HELPERS
-# -------------------------------------------------------
+# -------------------------------------
 def coerce_number(v):
     if isinstance(v, (int, float)):
-        return v
+        return float(v)
     if isinstance(v, str):
         try:
             return float(v)
@@ -151,183 +198,140 @@ def coerce_number(v):
     return v
 
 
-def apply_single_filter(b, attribute, operator, value):
-    value = coerce_number(value)
-
-    # ------ HEIGHT ------
-    if attribute == "height":
-        h = b["height"]
-        if operator == ">": return h > value
-        if operator == "<": return h < value
-        if operator == ">=": return h >= value
-        if operator == "<=": return h <= value
-        if operator in ["=", "=="]: return abs(h - value) < 1.0
+def apply_numeric(building, attr, op, val):
+    raw = building.get(attr)
+    if raw is None:
         return False
 
-    # ------ STAGE ------
-    if attribute == "stage":
-        stage = b.get("stage", "").lower()
-        val = str(value).lower()
-        if operator == "=": return stage == val
-        if operator == "contains": return val in stage
-        return False
+    try:
+        b_val = float(raw)
+    except:
+        return False  # drop missing vals
 
-    # ------ ASSESSED VALUE ------
-    if attribute == "assessed_value":
-        v = b.get("assessed_value")
-        if v is None:
-            return False
-        if operator == ">": return v > value
-        if operator == "<": return v < value
-        if operator == ">=": return v >= value
-        if operator == "<=": return v <= value
-        if operator in ["=", "=="]: return abs(v - value) < 1
-        return False
-
+    val = coerce_number(val)
+    if op == ">": return b_val > val
+    if op == "<": return b_val < val
+    if op == ">=": return b_val >= val
+    if op == "<=": return b_val <= val
+    if op in ["=", "=="]: return abs(b_val - val) < 1e-6
     return False
 
 
-# Multi-filter
-def handle_compound_query(filters):
-    print(f"🔗 Compound query with {len(filters)} filters")
+def apply_string(building, attr, op, val):
+    raw = building.get(attr)
+    if raw is None:
+        return False
+    field = str(raw).lower()
+    val = str(val).lower()
 
+    if op in ["=", "=="]:
+        return field == val
+    if op == "contains":
+        return val in field
+    return False
+
+
+def apply_single_filter(building, attribute, operator, value):
+    if attribute in NUMERIC_ATTRS:
+        return apply_numeric(building, attribute, operator, value)
+    if attribute in STRING_ATTRS:
+        return apply_string(building, attribute, operator, value)
+    return False
+
+
+def handle_compound_query(filters):
     matches = []
     for b in buildings:
         if all(apply_single_filter(b, f["attribute"], f["operator"], f["value"]) for f in filters):
             matches.append(b["id"])
 
-    print(f"✅ Compound returned {len(matches)} matches")
+    return jsonify({"ids": matches, "count": len(matches), "filters": filters})
+
+
+def handle_superlative(attribute, operator):
+    values = []
+    for b in buildings:
+        raw = b.get(attribute)
+        if raw is None:
+            continue
+        try:
+            v = float(raw)
+            values.append((b["id"], v))
+        except:
+            continue
+
+    if not values:
+        return jsonify({"ids": [], "count": 0})
+
+    best = max(v for _, v in values) if operator == "max" else min(v for _, v in values)
+    ids = [bid for bid, v in values if abs(v - best) < 1e-6]
 
     return jsonify({
-        "ids": matches,
-        "count": len(matches),
-        "filters": filters
+        "ids": ids,
+        "count": len(ids),
+        "filter": {"attribute": attribute, "operator": operator, "value": best}
     })
 
 
-# -------------------------------------------------------
-# 📌 QUERY API (LLM-powered)
-# -------------------------------------------------------
+# -------------------------------------
+# API ENDPOINT — NATURAL LANGUAGE QUERY
+# -------------------------------------
 @app.route("/api/query", methods=["POST"])
 def api_query():
-    user_query = request.json.get("query", "").strip()
+    data = request.get_json(force=True, silent=True) or {}
+    user_query = (data.get("query") or "").strip()
 
     if not user_query:
         return jsonify({"ids": [], "count": 0, "error": "Empty query"})
 
-    prompt = f"""
-Convert this natural language query into JSON.
-
-Supported attributes:
-- height (meters)
-- stage ("Constructed", "Approved", etc.)
-- assessed_value (numeric property value)
-
-Supported operators:
-- >, <, >=, <=, =, contains
-- max (for tallest / most expensive)
-- min (for shortest / cheapest)
-
-Examples:
-"taller than 50m" →
-  {{"attribute": "height", "operator": ">", "value": 50}}
-
-"constructed and over 100 meters" →
-  {{"filters": [
-      {{"attribute": "stage", "operator": "=", "value": "Constructed"}},
-      {{"attribute": "height", "operator": ">", "value": 100}}
-  ]}}
-
-"most expensive property" →
-  {{"attribute": "assessed_value", "operator": "max", "value": 0}}
-
-Query: "{user_query}"
-JSON:
-"""
-
+    prompt = f"Convert this query into JSON.\nQuery: \"{user_query}\"\nJSON:"
     llm_output = query_llm(prompt)
-    print("LLM RAW:", llm_output)
-
     filt = extract_json_block(llm_output)
-    if not filt:
-        return jsonify({"ids": [], "count": 0, "error": "JSON parse failed"})
 
-    # ❗ Compound query
+    if not filt:
+        return jsonify({"ids": [], "count": 0, "error": "Query parsing failed"})
+
+    # Multi-filter
     if "filters" in filt:
         return handle_compound_query(filt["filters"])
 
     # Single filter
-    attribute = filt.get("attribute")
-    operator = filt.get("operator")
-    value = coerce_number(filt.get("value"))
+    attr = filt.get("attribute")
+    op = (filt.get("operator") or "").lower()
+    val = filt.get("value")
 
-    # ----- SUPERLATIVES -----
+    if op in ["max", "min"]:
+        return handle_superlative(attr, op)
 
-    # Most expensive
-    if attribute == "assessed_value" and operator == "max":
-        vals = [b.get("assessed_value") or 0 for b in buildings]
-        max_val = max(vals)
-        ids = [b["id"] for b in buildings if (b.get("assessed_value") or 0) == max_val]
-        return jsonify({"ids": ids, "count": len(ids), "filter": filt})
-
-    # Cheapest
-    if attribute == "assessed_value" and operator == "min":
-        vals = [b.get("assessed_value") for b in buildings if b.get("assessed_value") is not None]
-        if vals:
-            min_val = min(vals)
-            ids = [b["id"] for b in buildings if b.get("assessed_value") == min_val]
-            return jsonify({"ids": ids, "count": len(ids), "filter": filt})
-
-    # Tallest
-    if attribute == "height" and operator == "max":
-        max_h = max(b["height"] for b in buildings)
-        ids = [b["id"] for b in buildings if b["height"] == max_h]
-        return jsonify({"ids": ids, "count": len(ids), "filter": filt})
-
-    # Shortest
-    if attribute == "height" and operator == "min":
-        min_h = min(b["height"] for b in buildings)
-        ids = [b["id"] for b in buildings if b["height"] == min_h]
-        return jsonify({"ids": ids, "count": len(ids), "filter": filt})
-
-    # ----- NORMAL FILTER -----
-    matches = [
-        b["id"]
-        for b in buildings
-        if apply_single_filter(b, attribute, operator, value)
-    ]
-
-    return jsonify({
-        "ids": matches,
-        "count": len(matches),
-        "filter": filt
-    })
+    matches = [b["id"] for b in buildings if apply_single_filter(b, attr, op, val)]
+    return jsonify({"ids": matches, "count": len(matches), "filter": filt})
 
 
-# -------------------------------------------------------
-# Return all buildings
-# -------------------------------------------------------
+# -------------------------------------
+# API: BUILDINGS
+# -------------------------------------
 @app.route("/api/buildings")
 def api_buildings():
     return jsonify(buildings)
 
 
-# -------------------------------------------------------
-# Health
-# -------------------------------------------------------
+# -------------------------------------
+# HEALTH
+# -------------------------------------
 @app.route("/api/health")
 def health():
     return jsonify({
         "status": "ok",
         "buildings_loaded": len(buildings),
         "llm_available": bool(GROQ_API_KEY),
-        "provider": "Groq"
+        "provider": "Groq" if GROQ_API_KEY else "Fallback",
     })
 
 
-# -------------------------------------------------------
-# Main
-# -------------------------------------------------------
+# -------------------------------------
+# ENTRY POINT
+# -------------------------------------
 if __name__ == "__main__":
-    print("🏙️ BUILDINGS LOADED:", len(buildings))
+    print("🏙️ URBAN 3D DASHBOARD BACKEND")
+    print(f"📊 Loaded: {len(buildings)} buildings")
     app.run(host="0.0.0.0", port=5000, debug=True)
