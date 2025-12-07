@@ -3,11 +3,15 @@
 Interactive 3D Visualization + Natural Language Querying  
 MASIV 2025 Internship Technical Challenge
 
+
 ---
 
 ## Live Demo
 
 https://urban-3d-dashboard.vercel.app
+
+![Image 2025-12-07 at 02 49](https://github.com/user-attachments/assets/4ddd34f5-a5df-4c51-9585-2a5c7ecb9e45)
+
 
 ---
 
