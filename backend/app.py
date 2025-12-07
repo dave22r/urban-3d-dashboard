@@ -167,26 +167,44 @@ def parse_query_fallback(prompt):
 
 def extract_json_block(text):
     """
-    Extracts JSON object from LLM response.
-    Handles responses with or without markdown formatting.
+    Extract ANY valid JSON object from the LLM output.
+    Handles nested structures, arrays, and markdown wrappers.
     """
-    # Remove markdown code blocks if present
-    text = re.sub(r'```json\s*', '', text)
-    text = re.sub(r'```\s*', '', text)
-    text = text.strip()
-    
-    # Try to find JSON object
-    match = re.search(r'\{[^{}]*\}', text, re.DOTALL)
-    if not match:
-        print("⚠️  No JSON found in LLM output")
-        return None
 
+    text = text.strip()
+
+    # First attempt: text is pure JSON
     try:
-        return json.loads(match.group())
-    except json.JSONDecodeError as e:
-        print(f"❌ JSON parse error: {e}")
-        print(f"   Attempted to parse: {match.group()[:100]}")
-        return None
+        return json.loads(text)
+    except:
+        pass
+
+    # Remove markdown code fences
+    text = re.sub(r"```json", "", text)
+    text = re.sub(r"```", "", text)
+
+    # Attempt to extract the *largest* JSON object (handles nested)
+    brace_stack = []
+    start_index = None
+
+    for i, char in enumerate(text):
+        if char == "{":
+            if start_index is None:
+                start_index = i
+            brace_stack.append("{")
+        elif char == "}":
+            if brace_stack:
+                brace_stack.pop()
+                if not brace_stack:
+                    # Try parsing full block
+                    candidate = text[start_index:i+1]
+                    try:
+                        return json.loads(candidate)
+                    except:
+                        continue
+
+    return None
+
 
 
 def apply_single_filter(building, attribute, operator, value):
