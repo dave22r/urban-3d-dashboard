@@ -182,3 +182,129 @@ classDiagram
     Sidebar --> StatsPanel
     Sidebar --> BuildingDetails
 ```
+Below is the Preprocessing pipeline diagram (not necessary)
+
+``` mermaid
+flowchart TD
+    Start([Start Preprocessing]) --> DownloadOSM[Download OSM Data<br/>map.osm]
+    Start --> DownloadParcel[Download Calgary Parcels<br/>parcels.geojson]
+
+    DownloadOSM --> Step1[Step 1: preprocess_osm.py]
+    DownloadParcel --> Step1
+
+    subgraph "Step 1: OSM Building Extraction"
+        Step1 --> ParseXML[Parse OSM XML]
+        ParseXML --> ExtractNodes[Extract Node Coordinates<br/>lat, lon]
+        ExtractNodes --> ExtractWays[Extract Ways with building=*]
+        ExtractWays --> GetHeight[Get building:height or default 5m]
+        GetHeight --> CreateFootprint[Create polygon footprint]
+        CreateFootprint --> CalcCentroid[Calculate centroid]
+        CalcCentroid --> OSMBuildings[(osm_buildings.json)]
+    end
+
+    OSMBuildings --> Step2[Step 2: preprocess_parcels.py]
+    DownloadParcel --> Step2
+
+    subgraph "Step 2: Parcel Filtering"
+        Step2 --> LoadBBox[Load OSM bounding box]
+        LoadBBox --> FilterParcels[Filter parcels by bbox]
+        FilterParcels --> ExtractProps[Extract parcel properties]
+        ExtractProps --> SimplifyGeom[Simplify geometry]
+        SimplifyGeom --> Parcels[(parcels.json)]
+    end
+
+    Parcels --> Step3[Step 3: preprocess_join.py]
+    OSMBuildings --> Step3
+
+    subgraph "Step 3: Spatial Join"
+        Step3 --> LoadBoth[Load OSM + parcel datasets]
+        LoadBoth --> IterateBuildings{For each building}
+        
+        IterateBuildings --> GetCentroid[Get building centroid]
+        GetCentroid --> BBoxCheck{Inside parcel bbox?}
+
+        BBoxCheck -->|No| NextParcel[Try next parcel]
+        NextParcel --> BBoxCheck
+
+        BBoxCheck -->|Yes| PointInPoly[Point-in-polygon test]
+
+        PointInPoly -->|Inside| FoundMatch[Match found!]
+        PointInPoly -->|Outside| NextParcel
+
+        FoundMatch --> MultiMatch{Multiple matches?}
+        MultiMatch -->|Yes| PickBest[Pick highest assessed_value]
+        MultiMatch -->|No| UseMatch[Use single match]
+
+        PickBest --> MergeData[Merge building + parcel data]
+        UseMatch --> MergeData
+        
+        BBoxCheck -->|No more parcels| NoMatch[Set parcel fields = null]
+        NoMatch --> AddToOutput
+
+        MergeData --> AddToOutput[Add enriched building]
+        AddToOutput --> IterateBuildings
+
+        IterateBuildings -->|Done| NormalizeCoords[Normalize to local coords]
+    end
+
+    NormalizeCoords --> FinalDataset[(buildings.json)]
+    FinalDataset --> End([Ready to Load])
+
+```
+Lastly, this is the LLM Query Processing flowchart
+
+``` mermaid
+flowchart TD
+    Start([User Query Received]) --> CheckEmpty{Query empty?}
+    CheckEmpty -->|Yes| ReturnEmpty[Return empty result]
+    CheckEmpty -->|No| CreatePrompt[Create LLM Prompt]
+
+    CreatePrompt --> CheckAPIKey{Groq API Key?}
+    CheckAPIKey -->|No| Fallback[Use Fallback Parser]
+    CheckAPIKey -->|Yes| CallGroq[Call Groq API]
+
+    CallGroq --> APIResponse{API Success?}
+    APIResponse -->|Error| Fallback
+    APIResponse -->|Success| ExtractResponse[Extract JSON text]
+
+    Fallback --> RegexParse[Regex fallback processing]
+    RegexParse --> ParseJSON
+
+    ExtractResponse --> ParseJSON[Extract JSON Block]
+
+    ParseJSON --> ValidJSON{Valid JSON?}
+    ValidJSON -->|No| Error[Return parse error]
+
+    ValidJSON -->|Yes| CheckType{Has 'filters'?}
+
+    CheckType -->|Yes| CompoundQuery
+    CheckType -->|No| SingleQuery
+
+    %% Compound Query
+    CompoundQuery --> SplitFilters[Separate superlatives & normal]
+    SplitFilters --> ApplyNormal[Apply all normal filters (AND logic)]
+    ApplyNormal --> SuperCheck{Superlatives exist?}
+    SuperCheck -->|No| ReturnNormal
+    SuperCheck -->|Yes| ApplySuperlative
+    ApplySuperlative --> ReturnCompound
+
+    %% Single Query
+    SingleQuery --> OperatorCheck{Operator max/min?}
+    OperatorCheck -->|Yes| SuperSingle
+    OperatorCheck -->|No| RegularSingle
+
+    SuperSingle --> ComputeExtreme[Find max/min value]
+    ComputeExtreme --> ReturnSuper
+
+    RegularSingle --> FilterBuildings[Apply numeric/string ops]
+    FilterBuildings --> ReturnSingle
+
+    %% Endpoints
+    ReturnEmpty --> End
+    ReturnNormal --> End
+    ReturnCompound --> End
+    ReturnSuper --> End
+    ReturnSingle --> End
+    Error --> End
+
+```
