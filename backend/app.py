@@ -14,7 +14,7 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Load buildings once at startup
 buildings = load_buildings()
@@ -404,6 +404,7 @@ def health():
 # ENTRY POINT
 # -------------------------------------
 if __name__ == "__main__":
-    print("🏙️ URBAN 3D DASHBOARD BACKEND")
+    # Local development mode only
+    print("🏙️ URBAN 3D DASHBOARD BACKEND (LOCAL DEV)")
     print(f"📊 Loaded: {len(buildings)} buildings")
     app.run(host="0.0.0.0", port=5000, debug=True)
