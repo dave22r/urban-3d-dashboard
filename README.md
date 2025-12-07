@@ -2,58 +2,113 @@ UML Diagram
 
 ``` mermaid
 
-flowchart TD
-    Start([User Query Received]) --> CheckEmpty{Query empty}
-    CheckEmpty -->|Yes| ReturnEmpty[Return empty result]
-    CheckEmpty -->|No| CreatePrompt[Create LLM prompt]
+classDiagram
+    %% ============ BACKEND ============
+    class FlaskApp {
+        -buildings: List~Building~
+        -GROQ_API_KEY: str
+        +api_query() JSON
+        +api_buildings() JSON
+        +api_health() JSON
+    }
 
-    CreatePrompt --> CheckAPIKey{Groq API key exists}
-    CheckAPIKey -->|No| Fallback[Use fallback parser]
-    CheckAPIKey -->|Yes| CallGroq[Call Groq API]
+    class DataLoader {
+        +load_buildings() List~Building~
+    }
 
-    CallGroq --> APIResponse{API success}
-    APIResponse -->|Error| Fallback
-    APIResponse -->|Success| ExtractResponse[Extract JSON text]
+    class LLMService {
+        +query_llm(prompt) str
+        +parse_query_fallback(prompt) str
+    }
 
-    Fallback --> RegexParse[Run fallback regex parser]
-    RegexParse --> ParseJSON
+    class QueryProcessor {
+        +extract_json_block(text) dict
+        +apply_single_filter() bool
+        +handle_compound_query() JSON
+        +handle_superlative() JSON
+    }
 
-    ExtractResponse --> ParseJSON[Extract JSON block]
+    class Building {
+        +id: int
+        +height: float
+        +footprint: List~List~float~~
+        +assessed_value: float
+        +community: str
+        +land_use_designation: str
+    }
 
-    ParseJSON --> ValidJSON{JSON is valid}
-    ValidJSON -->|No| Error[Return parsing error]
+    %% ============ FRONTEND ============
+    class Index {
+        +render() JSX
+    }
 
-    ValidJSON -->|Yes| CheckType{Contains filters}
+    class useBuildings {
+        -buildings: Building[]
+        -filteredIds: number[]
+        -selectedBuilding: Building
+        +runQuery(query) Promise
+        +clearFilters() void
+    }
 
-    CheckType -->|Yes| CompoundQuery
-    CheckType -->|No| SingleQuery
+    class CityScene {
+        +render() JSX
+    }
 
-    %% Compound Query Section
-    CompoundQuery --> SplitFilters[Split normal and superlative filters]
-    SplitFilters --> ApplyNormal[Apply all normal filters using AND]
-    ApplyNormal --> SuperCheck{Superlative filters exist}
-    SuperCheck -->|No| ReturnNormal[Return normal filtered results]
-    SuperCheck -->|Yes| ApplySuper[Apply superlative filters]
-    ApplySuper --> ReturnCompound[Return compound query results]
+    class BuildingMesh {
+        -building: Building
+        -isSelected: bool
+        -isFiltered: bool
+        +handleClick() void
+        +getColor() string
+    }
 
-    %% Single Query Section
-    SingleQuery --> OpCheck{Operator is max or min}
-    OpCheck -->|Yes| SuperSingle
-    OpCheck -->|No| RegularSingle
+    class Sidebar {
+        +render() JSX
+    }
 
-    SuperSingle --> Extreme[Compute extreme value]
-    Extreme --> ReturnSuper[Return superlative result]
+    class QueryInput {
+        -query: string
+        +handleSubmit() void
+    }
 
-    RegularSingle --> FilterBuildings[Apply numeric or text filtering]
-    FilterBuildings --> ReturnSingle[Return single filter result]
+    class Header {
+        +render() JSX
+    }
 
-    %% Endpoints
-    ReturnEmpty --> End
-    ReturnNormal --> End
-    ReturnCompound --> End
-    ReturnSuper --> End
-    ReturnSingle --> End
-    Error --> End
+    %% ============ RELATIONSHIPS ============
+    %% Backend Flow
+    FlaskApp --> DataLoader: uses
+    FlaskApp --> LLMService: uses
+    FlaskApp --> QueryProcessor: uses
+    FlaskApp --> Building: manages
+    DataLoader ..> Building: creates
+    
+    %% Frontend Flow
+    Index --> useBuildings: uses
+    Index --> CityScene: renders
+    Index --> Sidebar: renders
+    Index --> Header: renders
+    
+    useBuildings --> FlaskApp: API calls
+    useBuildings ..> Building: manages
+    
+    CityScene --> BuildingMesh: contains
+    BuildingMesh ..> Building: displays
+    
+    Sidebar --> QueryInput: contains
+    QueryInput --> useBuildings: triggers
+    
+    %% External
+    LLMService --> GroqAPI: calls
+    BuildingMesh --> ThreeJS: uses
+    
+    class GroqAPI {
+        <<external>>
+    }
+    
+    class ThreeJS {
+        <<external>>
+    }
 ```
 Below is the Preprocessing pipeline diagram (not necessary)
 
