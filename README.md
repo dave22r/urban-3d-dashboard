@@ -254,6 +254,68 @@ flowchart TD
 Lastly, this is the LLM Query Processing flowchart
 
 ``` mermaid
+Lastly, this is the LLM Query Processing flowchart
+
+Unable to render rich display
+
+No diagram type detected matching given configuration for text: Unable to render rich display
+
+Parse error on line 26:
+... all normal filters (AND logic)] App
+-----------------------^
+Expecting 'SQE', 'DOUBLECIRCLEEND', 'PE', '-)', 'STADIUMEND', 'SUBROUTINEEND', 'PIPE', 'CYLINDEREND', 'DIAMOND_STOP', 'TAGEND', 'TRAPEND', 'INVTRAPEND', 'UNICODE_TEXT', 'TEXT', 'TAGSTART', got 'PS'
+
+For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
+flowchart TD
+Start([User Query Received]) --> CheckEmpty{Query empty?}
+CheckEmpty -->|Yes| ReturnEmpty[Return empty result]
+CheckEmpty -->|No| CreatePrompt[Create LLM Prompt]
+
+CreatePrompt --> CheckAPIKey{Groq API Key?}
+CheckAPIKey -->|No| Fallback[Use Fallback Parser]
+CheckAPIKey -->|Yes| CallGroq[Call Groq API]
+
+CallGroq --> APIResponse{API Success?}
+APIResponse -->|Error| Fallback
+APIResponse -->|Success| ExtractResponse[Extract JSON text]
+
+Fallback --> RegexParse[Regex fallback processing]
+RegexParse --> ParseJSON
+
+ExtractResponse --> ParseJSON[Extract JSON Block]
+
+ParseJSON --> ValidJSON{Valid JSON?}
+ValidJSON -->|No| Error[Return parse error]
+
+ValidJSON -->|Yes| CheckType{Has 'filters'?}
+
+CheckType -->|Yes| CompoundQuery
+CheckType -->|No| SingleQuery
+CompoundQuery --> SplitFilters[Separate superlatives & normal]
+SplitFilters --> ApplyNormal[Apply all normal filters (AND logic)]
+ApplyNormal --> SuperCheck{Superlatives exist?}
+SuperCheck -->|No| ReturnNormal
+SuperCheck -->|Yes| ApplySuperlative
+ApplySuperlative --> ReturnCompound
+SingleQuery --> OperatorCheck{Operator max/min?}
+OperatorCheck -->|Yes| SuperSingle
+OperatorCheck -->|No| RegularSingle
+
+SuperSingle --> ComputeExtreme[Find max/min value]
+ComputeExtreme --> ReturnSuper
+
+RegularSingle --> FilterBuildings[Apply numeric/string ops]
+FilterBuildings --> ReturnSingle
+ReturnEmpty --> End
+ReturnNormal --> End
+ReturnCompound --> End
+ReturnSuper --> End
+ReturnSingle --> End
+Error --> End
+
+
+
+For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
 Unable to render rich display
 
 Parse error on line 26:
@@ -314,5 +376,4 @@ flowchart TD
     ReturnSuper --> End
     ReturnSingle --> End
     Error --> End
-
 ```
