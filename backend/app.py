@@ -240,12 +240,84 @@ def apply_single_filter(building, attribute, operator, value):
 
 
 def handle_compound_query(filters):
-    matches = []
-    for b in buildings:
-        if all(apply_single_filter(b, f["attribute"], f["operator"], f["value"]) for f in filters):
-            matches.append(b["id"])
+    """
+    Supports:
+    - normal filters
+    - superlatives (max/min) INSIDE compound filters
+    """
 
-    return jsonify({"ids": matches, "count": len(matches), "filters": filters})
+    # Separate superlative filters from normal filters
+    normal_filters = []
+    superlatives = []
+
+    for f in filters:
+        op = f.get("operator", "").lower()
+        if op in ["max", "min"]:
+            superlatives.append(f)
+        else:
+            normal_filters.append(f)
+
+    # STEP 1 — apply all normal filters
+    candidates = []
+    for b in buildings:
+        ok = True
+        for f in normal_filters:
+            if not apply_single_filter(b, f["attribute"], f["operator"], f["value"]):
+                ok = False
+                break
+        if ok:
+            candidates.append(b)
+
+    # If no superlatives → return normal results
+    if not superlatives:
+        return jsonify({
+            "ids": [b["id"] for b in candidates],
+            "count": len(candidates),
+            "filters": filters
+        })
+
+    # STEP 2 — apply superlatives on filtered candidates
+    final_ids = set(b["id"] for b in candidates)
+
+    for f in superlatives:
+        attr = f["attribute"]
+        op = f["operator"]
+
+        # Extract numeric values
+        pairs = []
+        for b in candidates:
+            raw = b.get(attr)
+            if raw is None: 
+                continue
+            try:
+                v = float(raw)
+                pairs.append((b["id"], v))
+            except:
+                continue
+
+        if not pairs:
+            continue
+
+        # max/min selection
+        if op == "max":
+            best_val = max(v for _, v in pairs)
+        else:
+            best_val = min(v for _, v in pairs)
+
+        # keep only those matching the superlative
+        final_ids = {
+            bid for (bid, v) in pairs
+            if abs(v - best_val) < 1e-6
+        }
+
+        # reduce candidates list for next superlative (if multiple)
+        candidates = [b for b in candidates if b["id"] in final_ids]
+
+    return jsonify({
+        "ids": list(final_ids),
+        "count": len(final_ids),
+        "filters": filters
+    })
 
 
 def handle_superlative(attribute, operator):

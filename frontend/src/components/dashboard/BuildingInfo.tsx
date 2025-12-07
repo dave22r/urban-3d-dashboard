@@ -19,7 +19,7 @@ export function BuildingDetails({ building }: Props) {
 
       <div><strong>Building ID:</strong> {building.id}</div>
       {building.osm_id && <div><strong>OSM ID:</strong> {building.osm_id}</div>}
-      <div><strong>Stage:</strong> {building.stage}</div>
+
       <div><strong>Height:</strong> {building.height.toFixed(2)} m</div>
 
       <hr className="my-3 opacity-40" />
