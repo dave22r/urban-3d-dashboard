@@ -1,6 +1,6 @@
 import { QueryInput } from "./QueryInput";
 import { StatsPanel } from "./StatsPanel";
-import { BuildingInfo } from "./BuildingInfo";
+import { BuildingDetails } from "./BuildingInfo";   // <-- FIXED IMPORT
 import { Building } from "@/types/building";
 import { QueryResult } from "@/types/building";
 import { AlertCircle, Loader2 } from "lucide-react";
@@ -69,10 +69,8 @@ export function Sidebar({
 
       {/* Selected Building Info */}
       {selectedBuilding && (
-        <BuildingInfo
+        <BuildingDetails   // <-- FIXED COMPONENT NAME
           building={selectedBuilding}
-          onClose={onCloseBuilding}
-          isFiltered={filteredIds.includes(selectedBuilding.id)}
         />
       )}
     </aside>
